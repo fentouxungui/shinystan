@@ -1,0 +1,46 @@
+# Authors and Citation
+
+## Authors
+
+- **Jonah Gabry**. Author, maintainer.
+
+- **Duco Veen**. Author.
+
+- **Stan Development Team**. Contributor.
+
+- **Michael Andreae**. Contributor.
+
+- **Michael Betancourt**. Contributor.
+
+- **Bob Carpenter**. Contributor.
+
+- **Yuanjun Gao**. Contributor.
+
+- **Andrew Gelman**. Contributor.
+
+- **Ben Goodrich**. Contributor.
+
+- **Daniel Lee**. Contributor.
+
+- **Dongying Song**. Contributor.
+
+- **Rob Trangucci**. Contributor.
+
+- **Visruth Srimath Kandali**. Contributor.
+
+## Citation
+
+Source:
+[`DESCRIPTION`](https://github.com/stan-dev/shinystan/blob/master/DESCRIPTION)
+
+Gabry J, Veen D (2026). *shinystan: Interactive Visual and Numerical
+Diagnostics and Posterior Analysis for Bayesian Models*. R package
+version 2.7.0.9000, <https://mc-stan.org/shinystan/>.
+
+    @Manual{,
+      title = {shinystan: Interactive Visual and Numerical Diagnostics and Posterior Analysis for Bayesian Models},
+      author = {Jonah Gabry and Duco Veen},
+      year = {2026},
+      note = {R package version 2.7.0.9000},
+      url = {https://mc-stan.org/shinystan/},
+    }
