@@ -1,7 +1,8 @@
 # ShinyStan -> ShinyApps bundle (deploy-style, mirrors shinystan::deploy_shinystan()).
-# Copies the package's Shiny app (inst/ShinyStan) into app/, prepends library()
-# lines, and supplies the demo object via app/sso.RData. No entry function,
-# no shinystan:: access at runtime; runs as a plain ui.R/server.R app.
+# Bundles the package's Shiny app (inst/ShinyStan) as a plain ui.R/server.R app:
+# prepends library() lines and supplies the demo object via app/sso.RData.
+# The shinystan package itself is NOT needed at runtime (S4 slots load from
+# sso.RData without the class definition), so no rstan dependency either.
 name: Build app bundle
 
 on:
@@ -12,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to attach bundles to (e.g. v0.2.0)"
+        description: "Existing tag to attach bundles to (e.g. v0.3.0)"
         required: false
         type: string
 
@@ -26,13 +27,12 @@ env:
   APP_DESC: "Interactive visual and numerical diagnostics and posterior analysis for Bayesian models (MCMC) - ShinyStan"
   APP_HOMEPAGE: "https://mc-stan.org/shinystan/"
   APP_LICENSE: "GPL-3.0-or-later"
-  APP_PKG: "shinystan"
   APP_SUBDIR: "ShinyStan"
   DEMO_RDA: "data/eight_schools.rda"
   DEMO_OBJECT: "eight_schools"
   UI_LIBS: "shiny,shinyjs,colourpicker,markdown,shinythemes,ggplot2,bayesplot,gtools,reshape2,dygraphs,xts,xtable,gridExtra,DT,threejs"
   SERVER_LIBS: "shiny,shinyjs,colourpicker,markdown,shinythemes"
-  APP_NOTES: "ShinyStan packaged as a plain ui.R/server.R app (same technique as shinystan::deploy_shinystan): the app files are bundled, library() lines prepended, and the built-in eight_schools demo is provided via sso.RData at startup. Load your own MCMC output through the app's normal load/paste workflow. Model fitting is out of scope (ShinyStan visualizes an existing posterior sample)."
+  APP_NOTES: "ShinyStan packaged as a plain ui.R/server.R app (same technique as shinystan::deploy_shinystan): the app files are bundled, library() lines are prepended, and the built-in eight_schools demo is provided via sso.RData at startup. Load your own MCMC output through the app's normal load/paste workflow. Model fitting is out of scope (ShinyStan visualizes an existing posterior sample)."
   MAX_REQUEST_MB: "1024"
   R_VERSION: "4.6.1"
 
@@ -62,7 +62,7 @@ jobs:
         run: |
           V="${{ github.event.release.tag_name }}${{ github.ref_name }}${{ inputs.tag }}"
           V="${V#v}"
-          if [ -z "$V" ]; then V="0.2.0"; fi
+          if [ -z "$V" ]; then V="0.3.0"; fi
           echo "VERSION=$V" >> "$GITHUB_ENV"
 
       - name: Assemble bundle (app files + rlib/ + manifest.json)
@@ -71,13 +71,12 @@ jobs:
           GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          app_id  <- Sys.getenv("APP_ID")
-          pkg     <- Sys.getenv("APP_PKG")
-          sub_    <- Sys.getenv("APP_SUBDIR")
-          src     <- normalizePath(file.path(getwd(), "inst", sub_), winslash = "/", mustWork = TRUE)
-          bundle  <- file.path(getwd(), "bundle"); unlink(bundle, recursive = TRUE); dir.create(bundle, recursive = TRUE)
-          appdir  <- file.path(bundle, "app"); dir.create(appdir, recursive = TRUE)
-          lib     <- file.path(bundle, "rlib"); dir.create(lib, recursive = TRUE)
+          app_id <- Sys.getenv("APP_ID")
+          sub_   <- Sys.getenv("APP_SUBDIR")
+          src    <- normalizePath(file.path(getwd(), "inst", sub_), winslash = "/", mustWork = TRUE)
+          bundle <- file.path(getwd(), "bundle"); unlink(bundle, recursive = TRUE); dir.create(bundle, recursive = TRUE)
+          appdir <- file.path(bundle, "app"); dir.create(appdir, recursive = TRUE)
+          lib    <- file.path(bundle, "rlib"); dir.create(lib, recursive = TRUE)
 
           # --- 1. copy the Shiny app files verbatim --------------------------
           for (p in list.files(src, all.files = TRUE, no.. = TRUE, full.names = TRUE))
@@ -90,27 +89,25 @@ jobs:
           assign(".SHINYSTAN_OBJECT", get(Sys.getenv("DEMO_OBJECT"), envir = e))
           save(list = ".SHINYSTAN_OBJECT", file = file.path(appdir, "sso.RData"))
 
-          # --- 3. prepend library() lines so the app's packages are attached --
+          # --- 3. prepend library() lines + load the demo object -------------
           ui_libs  <- strsplit(trimws(Sys.getenv("UI_LIBS")), "[ ,]+")[[1]]
           srv_libs <- strsplit(trimws(Sys.getenv("SERVER_LIBS")), "[ ,]+")[[1]]
-          prepend <- function(f, pkgs) { txt <- readLines(f, warn = FALSE); writeLines(c(paste0("library(", pkgs, ");"), txt), f) }
-          prepend(file.path(appdir, "ui.R"), ui_libs)
-          prepend(file.path(appdir, "server.R"), srv_libs)
-          prepend(file.path(appdir, "global.R"), pkg)  # load the shinystan S4 class + exports
+          prepend <- function(f, lines) { txt <- readLines(f, warn = FALSE); writeLines(c(lines, txt), f) }
+          prepend(file.path(appdir, "ui.R"), paste0("library(", ui_libs, ");"))
+          prepend(file.path(appdir, "server.R"), paste0("library(", srv_libs, ");"))
+          prepend(file.path(appdir, "global.R"), "load(\"sso.RData\")")
 
-          # --- 4. install the dependency closure + the package (S4 class defs) -
-          seed <- unique(c(ui_libs, srv_libs, pkg))
+          # --- 4. install the dependency closure -----------------------------
+          seed <- unique(c(ui_libs, srv_libs))
           base_pkgs <- rownames(installed.packages(priority = "base"))
           repos <- BiocManager::repositories(); options(repos = repos)
           db <- available.packages(repos = repos)
-          closure <- unique(c(seed, unlist(tools::package_dependencies(setdiff(seed, pkg), db = db, recursive = TRUE))))
-          closure <- setdiff(closure, c(base_pkgs, pkg)); closure <- intersect(closure, rownames(db))
+          closure <- unique(c(seed, unlist(tools::package_dependencies(seed, db = db, recursive = TRUE))))
+          closure <- setdiff(closure, base_pkgs); closure <- intersect(closure, rownames(db))
           li <- function(p, type) if (length(p)) install.packages(p, lib = lib, repos = repos, type = type, dependencies = FALSE, Ncpus = 2)
           have <- function() basename(list.dirs(lib, recursive = FALSE))
           li(closure, "binary"); nb <- setdiff(closure, have())
           if (length(nb)) { cat("source fallback:", length(nb), "\n"); li(nb, "source") }
-          install.packages(normalizePath(getwd()), lib = lib, repos = NULL, type = "source", dependencies = FALSE)
-          if (!pkg %in% have()) stop("package install failed: ", pkg)
           missing <- setdiff(seed, have()); if (length(missing)) stop("missing: ", paste(missing, collapse = ", "))
           cat("rlib packages:", length(have()), "\n")
 
@@ -136,6 +133,7 @@ jobs:
           entries <- utils::unzip(out, list = TRUE)$Name
           if (!any(grepl("^rlib/", entries))) stop("zip is missing rlib/ -- aborting")
           if (!any(grepl("^app/(app[.]R|ui[.]R)$", entries))) stop("zip is missing app/app.R or app/ui.R -- aborting")
+          if (!any(grepl("^app/sso[.]RData$", entries))) stop("zip is missing app/sso.RData -- aborting")
           setwd(old); file.rename(file.path(bundle, out), out)
           sha <- digest::digest(out, algo = "sha256", file = TRUE); sz <- file.size(out)
           cat("bundle zip size (bytes):", sz, "\n")
