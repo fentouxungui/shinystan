@@ -103,10 +103,10 @@ jobs:
           install.packages(pkg_src, lib = lib, repos = NULL, type = "source", dependencies = FALSE)
           if (!pkg_name %in% have()) stop("app package failed to install: ", pkg_name)
 
-          required <- setdiff(deps, soft)
+          required <- setdiff(deps, c(soft, base_pkgs))
           missing <- setdiff(required, have())
           if (length(missing)) stop("missing required dependencies: ", paste(missing, collapse = ", "))
-          soft_missing <- setdiff(intersect(soft, deps), have())
+          soft_missing <- setdiff(intersect(soft, deps), c(have(), base_pkgs))
           cat("required ok | soft missing:", paste(soft_missing, collapse = ","), "\n")
 
           writeLines(rawToChar(jsonlite::base64_dec(Sys.getenv("ENTRY_B64"))), file.path(appdir, "app.R"))
